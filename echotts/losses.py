@@ -36,3 +36,29 @@ class TacotronLoss(nn.Module):
         stop = F.binary_cross_entropy_with_logits(out["stop_logits"], batch["stop"])
         total = before + after + self.stop_weight * stop
         return {"total": total, "mel_before": before, "mel_after": after, "stop": stop}
+
+
+# ------------------------------------------------------------ vocoder (GAN) ---
+# Least-squares GAN: the critic should output 1 for real and 0 for fake.
+
+
+def discriminator_loss(real_scores: list[torch.Tensor], fake_scores: list[torch.Tensor]) -> torch.Tensor:
+    """Critic loss: push real scores to 1 and fake scores to 0."""
+    return sum(torch.mean((1 - r) ** 2) + torch.mean(f ** 2) for r, f in zip(real_scores, fake_scores))
+
+
+def generator_adversarial_loss(fake_scores: list[torch.Tensor]) -> torch.Tensor:
+    """Generator wants the critic to score its audio as real (1)."""
+    return sum(torch.mean((1 - f) ** 2) for f in fake_scores)
+
+
+def feature_matching_loss(real_fmaps: list[list[torch.Tensor]], fake_fmaps: list[list[torch.Tensor]]) -> torch.Tensor:
+    """L1 between the critic's inner features for real vs generated audio.
+
+    Like matching not just the judge's verdict but the judge's notes.
+    """
+    loss = 0.0
+    for real_layers, fake_layers in zip(real_fmaps, fake_fmaps):
+        for r, f in zip(real_layers, fake_layers):
+            loss = loss + torch.mean(torch.abs(r.detach() - f))
+    return loss
