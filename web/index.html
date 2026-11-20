@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>EchoTTS</title>
+  <meta name="description" content="EchoTTS: an English text-to-speech engine trained from scratch.">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="card">
+    <header>
+      <h1>EchoTTS</h1>
+      <p class="tagline">English text-to-speech. Every weight trained from scratch.</p>
+    </header>
+
+    <form id="tts-form" novalidate>
+      <label for="text">Text to speak</label>
+      <textarea id="text" name="text" rows="5" maxlength="300"
+                placeholder="Type a sentence, for example: The quick brown fox jumps over the lazy dog."></textarea>
+      <div class="row">
+        <span id="counter" class="counter" aria-live="polite">0 / 300</span>
+        <button id="generate" type="submit">
+          <span class="spinner" aria-hidden="true"></span>
+          <span class="label">Generate Speech</span>
+        </button>
+      </div>
+    </form>
+
+    <p id="error" class="error" role="alert" hidden></p>
+
+    <section id="result" class="result" hidden>
+      <audio id="player" controls></audio>
+      <a id="download" class="secondary" download="echotts.wav" href="#">Download WAV</a>
+    </section>
+
+    <footer>
+      <span id="status" class="status">Checking server…</span>
+    </footer>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>

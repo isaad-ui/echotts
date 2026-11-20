@@ -1,0 +1,8 @@
+# Minimal runtime for the Docker image (inference only).
+# PyTorch is installed separately from the CPU-only index in the Dockerfile.
+numpy>=1.26
+scipy>=1.11
+soundfile>=0.12
+pyyaml>=6.0
+fastapi>=0.110
+uvicorn[standard]>=0.29

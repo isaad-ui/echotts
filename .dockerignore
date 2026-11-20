@@ -1,0 +1,11 @@
+.git
+.venv
+data
+checkpoints
+outputs
+runs
+notebooks
+tests
+**/__pycache__
+*.wav
+*.pt

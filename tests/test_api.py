@@ -50,3 +50,10 @@ def test_no_model_gives_503(tiny_cfg, monkeypatch) -> None:
     with TestClient(create_app(cfg=tiny_cfg)) as c:
         assert c.get("/api/health").json()["status"] == "no_model"
         assert c.post("/api/tts", json={"text": "hi"}).status_code == 503
+
+
+def test_frontend_is_served(client) -> None:
+    r = client.get("/")
+    assert r.status_code == 200 and "Generate Speech" in r.text
+    assert client.get("/app.js").status_code == 200
+    assert client.get("/style.css").status_code == 200
