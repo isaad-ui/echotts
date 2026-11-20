@@ -10,13 +10,20 @@ audio:
   f_min: 0.0              # lowest mel frequency (Hz)
   f_max: 8000.0           # highest mel frequency (Hz)
   log_clamp_min: 1.0e-5   # floor before natural log, avoids log(0)
+  griffin_lim_iters: 60   # iterations for Griffin-Lim reconstruction
 
 text:
   # Lowercase letters, space and basic punctuation; pad and end-of-sentence added in text.py
   characters: "abcdefghijklmnopqrstuvwxyz"
   punctuation: "!',.?- "
-  pad_symbol: "_"
-  eos_symbol: "~"
+  pad_symbol: "_"         # id 0, used for padding
+  eos_symbol: "~"         # id 1, appended to every sentence
+
+data:
+  data_dir: data/LJSpeech-1.1   # contains metadata.csv and wavs/
+  mels_subdir: mels             # precomputed mels go in <data_dir>/mels/
+  trim_top_db: 40               # trim leading/trailing audio quieter than peak - 40 dB
+  num_workers: 2
 
 model:
   embedding_dim: 512
@@ -34,8 +41,7 @@ model:
     sizes: [256, 256]
     dropout: 0.5            # kept ON at inference too
   decoder:
-    lstm_units: 1024
-    n_layers: 2
+    lstm_units: 1024        # attention LSTM and decoder LSTM (2 layers)
     dropout: 0.1
     max_decoder_steps: 1000
     stop_threshold: 0.5
@@ -43,12 +49,17 @@ model:
     n_convs: 5
     channels: 512
     kernel_size: 5
+    dropout: 0.5
 
 training:
   learning_rate: 1.0e-3
   weight_decay: 1.0e-6
   grad_clip: 1.0
   batch_size: 32            # drop to 16 if GPU memory runs out
+  stop_loss_weight: 1.0     # raise if speech never stops
+  max_steps: 200000
+  mixed_precision: false
+  log_every: 100
   split:
     train: 12500
     val: 100
@@ -56,17 +67,36 @@ training:
     seed: 1234
   checkpoint_every: 1000
   keep_checkpoints: 3
-  data_dir: data/LJSpeech-1.1
   checkpoint_dir: checkpoints/acoustic
+  log_dir: runs/acoustic
+  overfit_clips: 8
+  overfit_steps: 300
 
 vocoder:
-  upsample_rates: [8, 8, 2, 2]   # product must equal hop_length (256)
+  upsample_rates: [8, 8, 2, 2]          # product must equal hop_length (256)
+  upsample_kernel_sizes: [16, 16, 4, 4] # 2 x rate, so neighbouring kernels overlap evenly
+  upsample_initial_channel: 128         # small variant (~1M params)
+  resblock_kernel_sizes: [3, 7, 11]
+  resblock_dilations: [[1, 3, 5], [1, 3, 5], [1, 3, 5]]
+  leaky_relu_slope: 0.1
+  mpd_periods: [2, 3, 5, 7, 11]
+  msd_scales: 3
   segment_size: 8192
   batch_size: 16
   learning_rate: 2.0e-4
   betas: [0.8, 0.99]
-  mpd_periods: [2, 3, 5, 7, 11]
+  lr_decay: 0.999           # per epoch
   loss_weights:
     feature_matching: 2.0
     mel_l1: 45.0
+  max_steps: 500000
+  log_every: 100
+  checkpoint_every: 1000
+  keep_checkpoints: 3
   checkpoint_dir: checkpoints/vocoder
+  log_dir: runs/vocoder
+
+inference:
+  max_chars: 300            # API rejects longer input
+  short_audio_ratio: 0.02   # seconds per character below this = "far too short"
+  eval_samples: 20          # samples written for listening

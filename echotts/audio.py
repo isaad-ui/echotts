@@ -41,6 +41,25 @@ def load_wav(path: str | Path, audio_cfg: dict[str, Any]) -> torch.Tensor:
     return torch.from_numpy(np.ascontiguousarray(data))
 
 
+def trim_silence(wav: torch.Tensor, top_db: float, frame: int = 1024, hop: int = 256) -> torch.Tensor:
+    """Cut leading and trailing parts quieter than (peak - top_db) decibels.
+
+    Long silences at the edges confuse attention, so we remove them.
+    wav: (samples,) -> (fewer samples,)
+    """
+    if wav.numel() < frame:
+        return wav
+    frames = wav.unfold(0, frame, hop)                       # (n_frames, frame)
+    rms = frames.pow(2).mean(dim=1).sqrt()                   # loudness per frame
+    db = 20 * torch.log10(rms.clamp(min=1e-10) / rms.max().clamp(min=1e-10))
+    loud = torch.nonzero(db > -top_db).flatten()
+    if loud.numel() == 0:
+        return wav
+    start = int(loud[0]) * hop
+    end = min(wav.numel(), int(loud[-1]) * hop + frame)
+    return wav[start:end]
+
+
 def save_wav(path: str | Path, wav: torch.Tensor, sample_rate: int) -> None:
     """Save a (samples,) float tensor as a 16-bit PCM WAV."""
     audio = wav.detach().cpu().float().clamp(-1.0, 1.0).numpy()
