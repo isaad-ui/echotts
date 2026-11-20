@@ -221,3 +221,10 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# EchoTTS: never commit data, checkpoints or audio output
+data/
+checkpoints/
+*.wav
+runs/
+.venv/

@@ -1,0 +1,72 @@
+# EchoTTS settings. Every number used by the code lives here.
+# The acoustic model and the vocoder MUST agree on the audio section.
+
+audio:
+  sample_rate: 22050      # samples per second
+  n_fft: 1024             # samples analysed per window
+  win_length: 1024        # same as FFT size
+  hop_length: 256         # step between frames (~86 frames per second)
+  n_mels: 80              # height of the mel spectrogram
+  f_min: 0.0              # lowest mel frequency (Hz)
+  f_max: 8000.0           # highest mel frequency (Hz)
+  log_clamp_min: 1.0e-5   # floor before natural log, avoids log(0)
+
+text:
+  # Lowercase letters, space and basic punctuation; pad and end-of-sentence added in text.py
+  characters: "abcdefghijklmnopqrstuvwxyz"
+  punctuation: "!',.?- "
+  pad_symbol: "_"
+  eos_symbol: "~"
+
+model:
+  embedding_dim: 512
+  encoder:
+    n_convs: 3
+    channels: 512
+    kernel_size: 5
+    dropout: 0.5
+    lstm_hidden: 256        # per direction (bidirectional -> 512)
+  attention:
+    dim: 128
+    location_filters: 32
+    location_kernel: 31
+  prenet:
+    sizes: [256, 256]
+    dropout: 0.5            # kept ON at inference too
+  decoder:
+    lstm_units: 1024
+    n_layers: 2
+    dropout: 0.1
+    max_decoder_steps: 1000
+    stop_threshold: 0.5
+  postnet:
+    n_convs: 5
+    channels: 512
+    kernel_size: 5
+
+training:
+  learning_rate: 1.0e-3
+  weight_decay: 1.0e-6
+  grad_clip: 1.0
+  batch_size: 32            # drop to 16 if GPU memory runs out
+  split:
+    train: 12500
+    val: 100
+    test: 500
+    seed: 1234
+  checkpoint_every: 1000
+  keep_checkpoints: 3
+  data_dir: data/LJSpeech-1.1
+  checkpoint_dir: checkpoints/acoustic
+
+vocoder:
+  upsample_rates: [8, 8, 2, 2]   # product must equal hop_length (256)
+  segment_size: 8192
+  batch_size: 16
+  learning_rate: 2.0e-4
+  betas: [0.8, 0.99]
+  mpd_periods: [2, 3, 5, 7, 11]
+  loss_weights:
+    feature_matching: 2.0
+    mel_l1: 45.0
+  checkpoint_dir: checkpoints/vocoder
