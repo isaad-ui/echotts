@@ -53,3 +53,8 @@ def test_griffin_lim_roundtrip(tmp_path) -> None:
     assert not torch.isnan(out).any()
     save_wav(tmp_path / "gl.wav", out, CFG["sample_rate"])
     assert (tmp_path / "gl.wav").exists()
+
+
+def test_griffin_lim_handles_one_frame() -> None:
+    out = griffin_lim(torch.zeros(80, 1) - 5.0, CFG, n_iter=2)
+    assert out.shape == (256,)

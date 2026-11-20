@@ -170,6 +170,13 @@ def griffin_lim(log_mel: torch.Tensor, audio_cfg: dict[str, Any], n_iter: int = 
     magnitude = mel_to_linear(log_mel, audio_cfg) ** power   # sharpen: reduces GL "phasiness"
     window = torch.hann_window(win)
     frames = magnitude.shape[-1]
+    # Very short mels (e.g. stop fired at once early in training) are too short for the
+    # STFT's reflect padding, so pad with silent frames and cut the extra audio at the end.
+    min_frames = n_fft // hop + 1
+    if frames < min_frames:
+        magnitude = torch.nn.functional.pad(magnitude, (0, min_frames - frames))
+    out_len = frames * hop
+    frames = magnitude.shape[-1]
     length = frames * hop
 
     # Start from random phase.
@@ -181,6 +188,6 @@ def griffin_lim(log_mel: torch.Tensor, audio_cfg: dict[str, Any], n_iter: int = 
                              center=True, return_complex=True)[..., :frames]
         angles = torch.exp(1j * torch.angle(rebuilt))
     wav = torch.istft(magnitude * angles, n_fft, hop_length=hop, win_length=win,
-                      window=window, center=True, length=length)
+                      window=window, center=True, length=length)[:out_len]
     peak = wav.abs().max()
     return wav / peak * 0.95 if peak > 0 else wav
