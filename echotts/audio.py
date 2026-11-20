@@ -8,6 +8,7 @@ way human ears do: fine detail in the low notes, coarse in the high notes.
 Both the acoustic model and the vocoder import mel_spectrogram from HERE,
 so they always see identical mels.
 """
+import io
 from functools import lru_cache
 from math import gcd
 from pathlib import Path
@@ -60,10 +61,18 @@ def trim_silence(wav: torch.Tensor, top_db: float, frame: int = 1024, hop: int =
     return wav[start:end]
 
 
-def save_wav(path: str | Path, wav: torch.Tensor, sample_rate: int) -> None:
-    """Save a (samples,) float tensor as a 16-bit PCM WAV."""
+def save_wav(path: str | Path | io.BytesIO, wav: torch.Tensor, sample_rate: int) -> None:
+    """Save a (samples,) float tensor as a 16-bit PCM WAV (to a path or an in-memory buffer)."""
     audio = wav.detach().cpu().float().clamp(-1.0, 1.0).numpy()
-    sf.write(str(path), audio, sample_rate, subtype="PCM_16")
+    target = path if isinstance(path, io.BytesIO) else str(path)
+    sf.write(target, audio, sample_rate, subtype="PCM_16", format="WAV")
+
+
+def wav_to_bytes(wav: torch.Tensor, sample_rate: int) -> bytes:
+    """Encode a waveform as WAV file bytes, e.g. for an HTTP response."""
+    buffer = io.BytesIO()
+    save_wav(buffer, wav, sample_rate)
+    return buffer.getvalue()
 
 
 # ------------------------------------------------------------ mel filters ---
