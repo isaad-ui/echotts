@@ -1,4 +1,5 @@
-"""Shared test fixtures: the config and a tiny fake LJSpeech folder."""
+"""Shared test fixtures: the config, a tiny model config and a tiny fake LJSpeech folder."""
+import copy
 from pathlib import Path
 
 import numpy as np
@@ -11,6 +12,22 @@ from echotts.config import load_config
 @pytest.fixture(scope="session")
 def cfg() -> dict:
     return load_config()
+
+
+@pytest.fixture(scope="session")
+def tiny_cfg(cfg) -> dict:
+    """Same audio/text settings, but miniature networks so CPU tests take seconds."""
+    c = copy.deepcopy(cfg)
+    m = c["model"]
+    m["embedding_dim"] = 16
+    m["encoder"].update(channels=16, lstm_hidden=8)
+    m["attention"].update(dim=8, location_filters=4, location_kernel=5)
+    m["prenet"]["sizes"] = [16, 16]
+    m["decoder"].update(lstm_units=16, max_decoder_steps=20)
+    m["postnet"]["channels"] = 16
+    c["vocoder"].update(upsample_initial_channel=16, resblock_kernel_sizes=[3], resblock_dilations=[[1]])
+    c["audio"]["griffin_lim_iters"] = 2
+    return c
 
 
 FAKE_LINES = [

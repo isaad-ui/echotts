@@ -105,5 +105,6 @@ vocoder:
 
 inference:
   max_chars: 300            # API rejects longer input
+  sentence_pause_s: 0.25    # silence inserted between sentences
   short_audio_ratio: 0.02   # seconds per character below this = "far too short"
   eval_samples: 20          # samples written for listening
