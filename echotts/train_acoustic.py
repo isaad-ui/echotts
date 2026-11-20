@@ -78,7 +78,11 @@ def train(cfg: dict[str, Any], data_dir: Path, ckpt_dir: Path, log_dir: Path, ma
     latest = latest_checkpoint(ckpt_dir)
     if latest is not None:
         state = load_checkpoint(latest, device)
-        model.load_state_dict(state["model"])
+        try:
+            model.load_state_dict(state["model"])
+        except RuntimeError as exc:                     # e.g. checkpoint made with another frames_per_step
+            raise SystemExit(f"{latest} does not match the current model settings in the config. "
+                             f"Use a new --checkpoint_dir for the new settings.\n{exc}") from exc
         optimizer.load_state_dict(state["optimizer"])
         scaler.load_state_dict(state["scaler"])
         step = state["step"]

@@ -33,6 +33,9 @@ class Decoder(nn.Module):
         super().__init__()
         dec = model_cfg["decoder"]
         self.n_mels = n_mels
+        # Reduction factor r: frames produced per decoder step. r=2 halves the number of
+        # sequential steps (the slow part of training) at a small cost in fine detail.
+        self.r = dec["frames_per_step"]
         self.units = dec["lstm_units"]
         self.dropout = dec["dropout"]
         self.max_steps = dec["max_decoder_steps"]
@@ -42,8 +45,8 @@ class Decoder(nn.Module):
         self.attention_rnn = nn.LSTMCell(prenet_dim + memory_dim, self.units)
         self.attention = LocationSensitiveAttention(self.units, memory_dim, model_cfg["attention"])
         self.decoder_rnn = nn.LSTMCell(self.units + memory_dim, self.units)
-        self.mel_proj = nn.Linear(self.units + memory_dim, n_mels)
-        self.stop_proj = nn.Linear(self.units + memory_dim, 1)
+        self.mel_proj = nn.Linear(self.units + memory_dim, n_mels * self.r)   # r frames at once
+        self.stop_proj = nn.Linear(self.units + memory_dim, 1)                # one stop per step
 
     # ------------------------------------------------------------ helpers ---
 
@@ -60,7 +63,7 @@ class Decoder(nn.Module):
 
     def step(self, prenet_out: torch.Tensor, memory: torch.Tensor, processed_memory: torch.Tensor,
              mask: torch.Tensor | None, s: State) -> tuple[torch.Tensor, torch.Tensor, State]:
-        """One decoder step. prenet_out: (B, prenet_dim) -> mel (B, n_mels), stop logit (B,)."""
+        """One decoder step. prenet_out: (B, prenet_dim) -> mel (B, r, n_mels), stop logit (B,)."""
         att_in = torch.cat([prenet_out, s["context"]], dim=-1)              # (B, prenet + mem)
         att_h, att_c = self.attention_rnn(att_in, (s["att_h"], s["att_c"]))
         att_h = F.dropout(att_h, self.dropout, self.training)
@@ -75,7 +78,12 @@ class Decoder(nn.Module):
         out = torch.cat([dec_h, context], dim=-1)                           # (B, units + mem)
         new_state = {"att_h": att_h, "att_c": att_c, "dec_h": dec_h, "dec_c": dec_c,
                      "weights": weights, "weights_cum": s["weights_cum"] + weights, "context": context}
-        return self.mel_proj(out), self.stop_proj(out).squeeze(-1), new_state
+        mel = self.mel_proj(out).view(-1, self.r, self.n_mels)            # (B, r, n_mels)
+        return mel, self.stop_proj(out).squeeze(-1), new_state
+
+    def _frames(self, steps: list[torch.Tensor]) -> torch.Tensor:
+        """List of per-step (B, r, n_mels) -> one mel (B, n_mels, steps * r)."""
+        return torch.cat(steps, dim=1).transpose(1, 2)
 
     # -------------------------------------------------------------- modes ---
 
@@ -85,26 +93,33 @@ class Decoder(nn.Module):
 
         memory:     (B, T_text, mem)
         mel_target: (B, n_mels, T_mel)
-        returns mel (B, n_mels, T_mel), stop logits (B, T_mel), alignments (B, T_mel, T_text)
+        returns mel (B, n_mels, T_mel), stop logits (B, T_mel), alignments (B, n_steps, T_text)
+        with n_steps = ceil(T_mel / r): one attention row per decoder step.
         """
         B, _, T_mel = mel_target.shape
+        n_steps = -(-T_mel // self.r)                                        # ceil division
+        # Each step is fed the LAST real frame of the previous group of r frames.
+        last_of_group = mel_target[:, :, self.r - 1::self.r][:, :, : n_steps - 1]  # (B, n_mels, n_steps-1)
         go = mel_target.new_zeros(B, self.n_mels, 1)                         # silent "go" frame
-        prev = torch.cat([go, mel_target[:, :, :-1]], dim=2)                 # shift right by one
-        prenet_out = self.prenet(prev.transpose(1, 2))                       # (B, T_mel, prenet)
+        prev = torch.cat([go, last_of_group], dim=2)                         # (B, n_mels, n_steps)
+        prenet_out = self.prenet(prev.transpose(1, 2))                       # (B, n_steps, prenet)
         processed = self.attention.process_memory(memory)
         state = self.init_state(memory)
         mels, stops, aligns = [], [], []
-        for t in range(T_mel):
+        for t in range(n_steps):
             mel, stop, state = self.step(prenet_out[:, t], memory, processed, mask, state)
             mels.append(mel); stops.append(stop); aligns.append(state["weights"])
-        return (torch.stack(mels, dim=2), torch.stack(stops, dim=1), torch.stack(aligns, dim=1))
+        mel_out = self._frames(mels)[:, :, :T_mel]                           # drop overshoot frames
+        stop_out = torch.stack(stops, dim=1).repeat_interleave(self.r, dim=1)[:, :T_mel]  # per frame
+        return mel_out, stop_out, torch.stack(aligns, dim=1)
 
     @torch.no_grad()
     def infer(self, memory: torch.Tensor, mask: torch.Tensor | None = None,
               max_steps: int | None = None) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, bool]:
         """Free-running pass: feed back own predictions until stop fires for all items.
 
-        returns mel (B, n_mels, T), stop logits (B, T), alignments (B, T, T_text), hit_max_steps
+        returns mel (B, n_mels, steps * r), stop logits (B, steps), alignments (B, steps, T_text),
+        hit_max_steps. max_steps counts FRAMES, so the longest output is the same whatever r is.
         """
         max_steps = max_steps or self.max_steps
         B = memory.shape[0]
@@ -113,12 +128,12 @@ class Decoder(nn.Module):
         prev = memory.new_zeros(B, self.n_mels)                              # go frame
         finished = torch.zeros(B, dtype=torch.bool, device=memory.device)
         mels, stops, aligns = [], [], []
-        for _ in range(max_steps):
+        for _ in range(-(-max_steps // self.r)):
             mel, stop, state = self.step(self.prenet(prev), memory, processed, mask, state)
             mels.append(mel); stops.append(stop); aligns.append(state["weights"])
             finished |= torch.sigmoid(stop) > self.stop_threshold
             if finished.all():
                 break
-            prev = mel
+            prev = mel[:, -1]                                                # last frame of the group
         hit_max = not bool(finished.all())
-        return torch.stack(mels, 2), torch.stack(stops, 1), torch.stack(aligns, 1), hit_max
+        return self._frames(mels), torch.stack(stops, 1), torch.stack(aligns, 1), hit_max

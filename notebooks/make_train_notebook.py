@@ -77,10 +77,11 @@ cells = [
          "        print(name); display(Image(str(path)))\n"
          "    else:\n"
          "        print('missing', name, '- the run failed, read the error above')"),
-    md("## 6a. Train the acoustic model\nResumes automatically. Add `--batch_size 16` if you run out of GPU memory, "
-       "`--amp` for mixed precision (faster on T4/A100)."),
-    code("!python -m echotts.train_acoustic --data_dir {TRAIN_DATA} \\\n"
-         "    --checkpoint_dir {PERSIST}/checkpoints/acoustic --log_dir {PERSIST}/runs/acoustic"),
+    md("## 6a. Train the acoustic model\nResumes automatically. `--amp` = mixed precision (faster on T4). "
+       "Change `--batch_size 32` to 16 if you run out of GPU memory. The folder name `acoustic_r2` matches "
+       "`frames_per_step: 2` in the config: if you ever change that setting, use a new folder."),
+    code("!python -m echotts.train_acoustic --data_dir {TRAIN_DATA} --amp --batch_size 32 \\\n"
+         "    --checkpoint_dir {PERSIST}/checkpoints/acoustic_r2 --log_dir {PERSIST}/runs/acoustic_r2"),
     md("## 6b. Train the vocoder\nTrains on real recordings, independent of the acoustic model, so it can run in a "
        "separate session (or a second free GPU account) in parallel."),
     code("!python -m echotts.train_vocoder --data_dir {TRAIN_DATA} \\\n"

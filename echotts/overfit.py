@@ -48,8 +48,10 @@ def run_overfit(cfg: dict, data_dir: Path, steps: int, out_dir: Path, device: st
 
     out_dir.mkdir(parents=True, exist_ok=True)
     T_text, T_mel = int(batch["text_lengths"][0]), int(batch["mel_lengths"][0])
+    r = cfg["model"]["decoder"]["frames_per_step"]
+    n_steps = -(-T_mel // r)                                          # attention has one row per step
     save(plot_loss(losses), out_dir / "loss_curve.png")
-    save(plot_alignment(out["alignments"][0, :T_mel, :T_text].detach().cpu().numpy()),
+    save(plot_alignment(out["alignments"][0, :n_steps, :T_text].detach().cpu().numpy()),
          out_dir / "attention.png")
     save(plot_mels(out["mel_after"][0, :, :T_mel].detach().cpu().numpy(),
                    batch["mel"][0, :, :T_mel].cpu().numpy()), out_dir / "mel_compare.png")
