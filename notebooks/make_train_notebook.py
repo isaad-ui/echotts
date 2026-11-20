@@ -64,6 +64,19 @@ cells = [
          "print(len(list(MEL_STORE.glob('*.npy'))), 'mels ready')"),
     md("## 5. TensorBoard\nWatch `train/total` fall in the first 500 steps and check the alignment images every few thousand steps."),
     code("%load_ext tensorboard\n%tensorboard --logdir {PERSIST}/runs"),
+    md("## 5b. Overfit check (run this BEFORE training)\nTrains on 8 fixed clips for 300 steps (a few minutes). "
+       "The pictures appear right under the cell. **Pass** = the loss falls far below its start AND the attention "
+       "picture shows a clear bright diagonal line from bottom-left to top-right. No diagonal → stop and debug "
+       "before spending GPU hours."),
+    code("from IPython.display import Image, display\n"
+         "OVERFIT = PERSIST / 'overfit'\n"
+         "!python -m echotts.overfit --data_dir {TRAIN_DATA} --out_dir {OVERFIT}\n"
+         "for name in ['loss_curve.png', 'attention.png', 'mel_compare.png']:\n"
+         "    path = OVERFIT / name\n"
+         "    if path.exists():\n"
+         "        print(name); display(Image(str(path)))\n"
+         "    else:\n"
+         "        print('missing', name, '- the run failed, read the error above')"),
     md("## 6a. Train the acoustic model\nResumes automatically. Add `--batch_size 16` if you run out of GPU memory, "
        "`--amp` for mixed precision (faster on T4/A100)."),
     code("!python -m echotts.train_acoustic --data_dir {TRAIN_DATA} \\\n"
